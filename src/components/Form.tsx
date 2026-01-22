@@ -1,33 +1,35 @@
 import { useState, type FormEvent, type ChangeEvent, useEffect } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import * as z from "zod"
 
 interface userProfile {
     firstname: string,
     lastname: string,
     email: string,
-    age: number | string,
+    age: number,
     address: string
 }
 
-interface formErrors {
-    firstname?: string,
-    lastname?: string,
-    email?: string,
-    age?: string,
-    address?: string
-}
+const userSchema = z.object({
+    firstname: z.string().min(1, "First name is required"),
+    lastname: z.string().min(1, "Last name is required"),
+    email: z.string().email("Invalid email address"),
+    age: z.coerce.number({
+        invalid_type_error: "Age is required",
+        required_error: "Age is required"
+    })
+        .min(1, "Age is required")
+        .max(120, "Please enter a valid age"), address: z.string().min(10, "Address must be at least 10 characters long")
+})
 
 const Form = () => {
 
-    const [formData, setFormData] = useState<userProfile>({
-        firstname: '',
-        lastname: '',
-        email: '',
-        age: '',
-        address: ''
+    const { register, handleSubmit, reset, formState: { errors } } = useForm<userProfile>({
+        resolver: zodResolver(userSchema),
+        defaultValues: { firstname: '', lastname: '', email: '', age: '' as unknown as number, address: '' }
     })
-    const [isSubmitted, setIsSubmitted] = useState<Boolean>(false);
     const [allUsers, setAllUsers] = useState<userProfile[]>([]);
-    const [errors, setErrors] = useState<formErrors>({})
     const [currentPage, setCurrentPage] = useState<number>(1);
     const usersPerPage = 5;
 
@@ -40,36 +42,6 @@ const Form = () => {
     useEffect(() => {
         fetchUsers();
     }, [])
-
-    const validate = (): boolean => {
-        const newErrors: formErrors = {};
-
-        if (!formData.firstname.trim()) {
-            newErrors.firstname = "First name is required!";
-        }
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!formData.email) {
-            newErrors.email = "Email is required!";
-        } else if (!emailRegex.test(formData.email)) {
-            newErrors.email = "Please enter a valid email address!";
-        }
-
-        const ageNum = Number(formData.age);
-        if (!formData.age) {
-            newErrors.age = "Age is required!";
-        } else if (isNaN(ageNum)) {
-            newErrors.age = "Please enter valid age!";
-        }
-
-        if (formData.address.length < 10) {
-            newErrors.address = "Address must be at least 10 characters long!";
-        }
-
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-
-    }
 
 
     const fetchUsers = () => {
@@ -98,51 +70,26 @@ const Form = () => {
     }
 
 
-    const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
+    const onSubmit = (data: userProfile) => {
 
-        setFormData((prev) => ({
-            ...prev,
-            [name]: name === "age" ? (value === "" ? "" : parseInt(value)) : value
-        }))
-    }
+        //open or create the database 
+        const request = indexedDB.open("userDatabase", 1);
 
+        request.onsuccess = () => {
+            const db = request.result;
+            const transaction = db.transaction("users", "readwrite");
+            const store = transaction.objectStore("users");
 
-    const submitHandler = (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
+            const addRequest = store.add(data);
 
-        const isValid = validate();
-
-        if (isValid) {
-            //open or create the database 
-            const request = indexedDB.open("userDatabase", 1);
-
-            request.onsuccess = ((e: Event) => {
-                const target = e.target as IDBOpenDBRequest;
-                const db: IDBDatabase = target.result;
-                const transaction = db.transaction("users", "readwrite");
-                const store = transaction.objectStore("users");
-
-                const addRequest = store.add(formData);
-
-                addRequest.onsuccess = () => {
-                    fetchUsers();
-                    setFormData({
-                        firstname: '',
-                        lastname: '',
-                        email: '',
-                        age: '',
-                        address: ''
-                    })
-                    setIsSubmitted(true);
-                    console.log("Data stored in IndexedDB!");
-                }
-                addRequest.onerror = () => {
-                    console.log("Error adding user. (likely a duplicate user)")
-                }
-            })
-        } else {
-            console.log("Validation failed!")
+            addRequest.onsuccess = () => {
+                fetchUsers();
+                reset();
+                console.log("Data stored in IndexedDB!");
+            }
+            addRequest.onerror = () => {
+                console.log("Error adding user. (likely a duplicate user)")
+            }
         }
     }
 
@@ -150,7 +97,7 @@ const Form = () => {
     return (
         <>
             <div className="form-container">
-                <form action="" className="form" onSubmit={submitHandler}>
+                <form action="" className="form" onSubmit={handleSubmit(onSubmit)}>
                     <h1>Sign Up Form</h1>
                     <div className="form-container">
                         <div className="single-div">
@@ -159,10 +106,8 @@ const Form = () => {
                                 <input
                                     type="text"
                                     placeholder="Enter firstname"
-                                    name="firstname"
-                                    value={formData.firstname}
-                                    onChange={handleChange} />
-                                {errors.firstname && <span>{errors.firstname}</span>}
+                                    {...register("firstname")} />
+                                {errors.firstname && <span>{errors.firstname.message}</span>}
                             </div>
                         </div>
                         <div className="single-div">
@@ -170,9 +115,7 @@ const Form = () => {
                             <input
                                 type="text"
                                 placeholder="Enter lastname"
-                                name="lastname"
-                                value={formData.lastname}
-                                onChange={handleChange} />
+                                {...register("lastname")} />
                         </div>
                         <div className="single-div">
                             <label>Email: </label>
@@ -180,10 +123,8 @@ const Form = () => {
                                 <input
                                     // type="email"
                                     placeholder="Enter email"
-                                    name="email"
-                                    value={formData.email}
-                                    onChange={handleChange} />
-                                {errors.email && <span>{errors.email}</span>}
+                                    {...register("email")} />
+                                {errors.email && <span>{errors.email.message}</span>}
                             </div>
                         </div>
                         <div className="single-div">
@@ -192,10 +133,8 @@ const Form = () => {
                                 <input
                                     type="number"
                                     placeholder="Enter age"
-                                    name="age"
-                                    value={formData.age}
-                                    onChange={handleChange} />
-                                {errors.age && <span>{errors.age}</span>}
+                                    {...register("age")} />
+                                {errors.age && <span>{errors.age.message}</span>}
                             </div>
                         </div>
                         <div className="single-div">
@@ -205,14 +144,13 @@ const Form = () => {
                                     rows={4}
                                     style={{ width: '25em' }}
                                     placeholder="Enter address"
-                                    name="address"
-                                    value={formData.address}
-                                    onChange={handleChange} />
-                                    {errors.address && <span>{errors.address}</span>}
+                                    {...register("address")}
+                                />
+                                {errors.address && <span>{errors.address.message}</span>}
                             </div>
                         </div>
                     </div>
-                    <button>Submit</button>
+                    <button type="submit">Submit</button>
                 </form>
 
                 <div className="user-data">
