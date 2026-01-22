@@ -2,6 +2,8 @@ import { useState, type FormEvent, type ChangeEvent, useEffect } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
+import Pagination from "@mui/material/Pagination"
+import Stack from "@mui/material/Stack"
 
 interface userProfile {
     firstname: string,
@@ -16,8 +18,7 @@ const userSchema = z.object({
     lastname: z.string().min(1, "Last name is required"),
     email: z.string().email("Invalid email address"),
     age: z.coerce.number({
-        invalid_type_error: "Age is required",
-        required_error: "Age is required"
+        message: "Age is required",
     })
         .min(1, "Age is required")
         .max(120, "Please enter a valid age"), address: z.string().min(10, "Address must be at least 10 characters long")
@@ -179,11 +180,20 @@ const Form = () => {
                             ))}
                         </tbody>
                     </table>
-                    <div className="btns">
+                    {/* <div className="btns">
                         <button disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>Prev</button>
                         <span>{currentPage} of {totalPages || 1}</span>
                         <button disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(prev => prev + 1)}>Next</button>
-                    </div>
+                    </div> */}
+                    <Stack spacing={2} sx={{ marginTop: 2, alignItems: "center" }}>
+                        <Pagination
+                            count={totalPages}
+                            page={currentPage}
+                            onChange={(event, value) => setCurrentPage(value)}
+                            variant="outlined"
+                            shape="rounded"
+                        />
+                    </Stack>
                 </div>
             </div>
 
