@@ -8,6 +8,14 @@ interface userProfile {
     address: string
 }
 
+interface formErrors {
+    firstname?: string,
+    lastname?: string,
+    email?: string,
+    age?: string,
+    address?: string
+}
+
 const Form = () => {
 
     const [formData, setFormData] = useState<userProfile>({
@@ -19,6 +27,7 @@ const Form = () => {
     })
     const [isSubmitted, setIsSubmitted] = useState<Boolean>(false);
     const [allUsers, setAllUsers] = useState<userProfile[]>([]);
+    const [errors, setErrors] = useState<formErrors>({})
     const [currentPage, setCurrentPage] = useState<number>(1);
     const usersPerPage = 5;
 
@@ -32,11 +41,51 @@ const Form = () => {
         fetchUsers();
     }, [])
 
+    const validate = (): boolean => {
+        const newErrors: formErrors = {};
+
+        if (!formData.firstname.trim()) {
+            newErrors.firstname = "First name is required!";
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!formData.email) {
+            newErrors.email = "Email is required!";
+        } else if (!emailRegex.test(formData.email)) {
+            newErrors.email = "Please enter a valid email address!";
+        }
+
+        const ageNum = Number(formData.age);
+        if (!formData.age) {
+            newErrors.age = "Age is required!";
+        } else if (isNaN(ageNum)) {
+            newErrors.age = "Please enter valid age!";
+        }
+
+        if (formData.address.length < 10) {
+            newErrors.address = "Address must be at least 10 characters long!";
+        }
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+
+    }
+
 
     const fetchUsers = () => {
         const request = indexedDB.open("userDatabase", 1);
+
+        request.onupgradeneeded = (e) => {
+            const db = (e.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains("users")) {
+                db.createObjectStore("users", { keyPath: "email" });
+            }
+        }
+
         request.onsuccess = () => {
             const db = request.result;
+            if (!db.objectStoreNames.contains("users")) return;
+
             const transaction = db.transaction("users", "readonly");
             const store = transaction.objectStore("users");
 
@@ -62,91 +111,109 @@ const Form = () => {
     const submitHandler = (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        //open or create the database 
-        const request = indexedDB.open("userDatabase", 1);
+        const isValid = validate();
 
-        request.onupgradeneeded = ((e: IDBVersionChangeEvent) => {
-            const target = e.target as IDBOpenDBRequest;
-            const db: IDBDatabase = target.result;
-            db.createObjectStore("users", { keyPath: "email" });
-        })
+        if (isValid) {
+            //open or create the database 
+            const request = indexedDB.open("userDatabase", 1);
 
-        request.onsuccess = ((e: Event) => {
-            const target = e.target as IDBOpenDBRequest;
-            const db: IDBDatabase = target.result;
-            const transaction = db.transaction("users", "readwrite");
-            const store = transaction.objectStore("users");
+            request.onsuccess = ((e: Event) => {
+                const target = e.target as IDBOpenDBRequest;
+                const db: IDBDatabase = target.result;
+                const transaction = db.transaction("users", "readwrite");
+                const store = transaction.objectStore("users");
 
-            store.add(formData);
-            fetchUsers();
-            setIsSubmitted(true);
-            console.log("Data stored in IndexedDB!");
-        })
+                const addRequest = store.add(formData);
+
+                addRequest.onsuccess = () => {
+                    fetchUsers();
+                    setFormData({
+                        firstname: '',
+                        lastname: '',
+                        email: '',
+                        age: '',
+                        address: ''
+                    })
+                    setIsSubmitted(true);
+                    console.log("Data stored in IndexedDB!");
+                }
+                addRequest.onerror = () => {
+                    console.log("Error adding user. (likely a duplicate user)")
+                }
+            })
+        } else {
+            console.log("Validation failed!")
+        }
     }
 
 
     return (
         <>
-
             <div className="form-container">
-                {!isSubmitted &&
-                    <form action="" className="form" onSubmit={submitHandler}>
-                        <h1>Sign Up Form</h1>
-                        <div className="form-container">
-                            <div className="single-div">
-                                <label>Firstname: </label>
+                <form action="" className="form" onSubmit={submitHandler}>
+                    <h1>Sign Up Form</h1>
+                    <div className="form-container">
+                        <div className="single-div">
+                            <label>Firstname: </label>
+                            <div className="input-err">
                                 <input
-                                    required
                                     type="text"
                                     placeholder="Enter firstname"
                                     name="firstname"
                                     value={formData.firstname}
                                     onChange={handleChange} />
+                                {errors.firstname && <span>{errors.firstname}</span>}
                             </div>
-                            <div className="single-div">
-                                <label>Lastname: </label>
+                        </div>
+                        <div className="single-div">
+                            <label>Lastname: </label>
+                            <input
+                                type="text"
+                                placeholder="Enter lastname"
+                                name="lastname"
+                                value={formData.lastname}
+                                onChange={handleChange} />
+                        </div>
+                        <div className="single-div">
+                            <label>Email: </label>
+                            <div className="input-err">
                                 <input
-                                    required
-                                    type="text"
-                                    placeholder="Enter lastname"
-                                    name="lastname"
-                                    value={formData.lastname}
-                                    onChange={handleChange} />
-                            </div>
-                            <div className="single-div">
-                                <label>Email: </label>
-                                <input
-                                    required
-                                    type="email"
+                                    // type="email"
                                     placeholder="Enter email"
                                     name="email"
                                     value={formData.email}
                                     onChange={handleChange} />
+                                {errors.email && <span>{errors.email}</span>}
                             </div>
-                            <div className="single-div">
-                                <label>Age: </label>
+                        </div>
+                        <div className="single-div">
+                            <label>Age: </label>
+                            <div className="input-err">
                                 <input
-                                    required
                                     type="number"
                                     placeholder="Enter age"
                                     name="age"
                                     value={formData.age}
                                     onChange={handleChange} />
+                                {errors.age && <span>{errors.age}</span>}
                             </div>
-                            <div className="single-div">
-                                <label>Address: </label>
+                        </div>
+                        <div className="single-div">
+                            <label>Address: </label>
+                            <div className="input-err">
                                 <textarea
-                                    required
                                     rows={4}
                                     style={{ width: '25em' }}
                                     placeholder="Enter address"
                                     name="address"
                                     value={formData.address}
                                     onChange={handleChange} />
+                                    {errors.address && <span>{errors.address}</span>}
                             </div>
                         </div>
-                        <button>Submit</button>
-                    </form>}
+                    </div>
+                    <button>Submit</button>
+                </form>
 
                 <div className="user-data">
                     <h1>User Data</h1>
